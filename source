@@ -1,4 +1,4 @@
-
+-- s.win Potassium single-file build
 -- order: shim -> Assets -> Framework -> Utilities -> Interface
 pcall(function()
   if getgenv and getgenv().Library and getgenv().Library.Exit then
@@ -1203,7 +1203,14 @@ do -- Interface Elements
 
         local BG = Window.Background;
         Interface.ScreenGui = BG.Parent;
-        Window.UIScale = Framework:New("UIScale", { Parent = BG, Scale = 1 });
+        local startScale = 1
+        if Interface.IsMobile then
+            local vs = Vector2.new(900, 600)
+            pcall(function() vs = workspace.CurrentCamera.ViewportSize end)
+            startScale = math.clamp(vs.X / 1000, 0.55, 0.85)
+        end
+        Window.UIScale = Framework:New("UIScale", { Parent = BG, Scale = startScale });
+        Interface.UIScaleDefault = math.floor(startScale * 100 + 0.5)
         Interface.Windows = Interface.Windows or {}
         table.insert(Interface.Windows, Window);
 
@@ -1717,7 +1724,27 @@ do -- Interface Elements
                     }):Add({BackgroundColor3 = "Window", TextColor3 = "Accent"})
                     Framework:New("UICorner", { Parent = mBtn, CornerRadius = UDim.new(1, 0) })
                     Framework:New("UIStroke", { Parent = mBtn, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, LineJoinMode = Enum.LineJoinMode.Round }):Add({Color = "Outline"})
-                    Framework:Connect(mBtn.MouseButton1Click, function() toggleUI() end)
+                    local mDrag, mStart, mPos0, mMoved = false, nil, nil, false
+                    Framework:Connect(mBtn.InputBegan, function(i)
+                        if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
+                            mDrag, mStart, mPos0, mMoved = true, i.Position, mBtn.Position, false
+                        end
+                    end)
+                    Framework:Connect(Services.UserInputService.InputChanged, function(i)
+                        if mDrag and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseMovement) then
+                            local d = i.Position - mStart
+                            if d.Magnitude > 8 then mMoved = true end
+                            if mMoved then
+                                mBtn.Position = UDim2.new(mPos0.X.Scale, mPos0.X.Offset + d.X, mPos0.Y.Scale, mPos0.Y.Offset + d.Y)
+                            end
+                        end
+                    end)
+                    Framework:Connect(Services.UserInputService.InputEnded, function(i)
+                        if mDrag and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1) then
+                            mDrag = false
+                            if not mMoved then toggleUI() end
+                        end
+                    end)
                     table.insert(Interface.MobileButtons, mBtn)
                 end
                 ModalElement.Modal = Interface.Open;
@@ -6097,7 +6124,7 @@ do -- Settings
                 Framework.CurrentFont = Fonts[selected];
                 Framework:ApplyFontSettings();
             end});
-            Settings:Slider({ Name = "UI Scale", Flag = "ui_scale", Min = 50, Max = 150, Default = 100, Suffix = "%", Callback = function(Value)
+            Settings:Slider({ Name = "UI Scale", Flag = "ui_scale", Min = 50, Max = 150, Default = Interface.UIScaleDefault or 100, Suffix = "%", Callback = function(Value)
                 local s = Value / 100
                 for _, w in ipairs(Interface.Windows or {}) do
                     pcall(function() w.UIScale.Scale = s end)
