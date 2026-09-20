@@ -37,19 +37,41 @@ pcall(function()
   FontManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/FontManager.lua"))()
 end)
 if not FontManager then
-  FontManager = { register = function(_, _, _) return Font.fromEnum(Enum.Font.Code) end }
+  FontManager = { register = function(_, _, _) return Font.fromEnum(Enum.Font.Montserrat) end }
 end
-do -- Fonts
+do -- Fonts (self-healing cache + custom hosts)
+    -- one-time purge of poisoned font cache (old bad URLs wrote HTML as fonts)
+    pcall(function()
+        if not isfile("bfui/Fonts/.v3") then
+            for _, n in ipairs({"MontserratBlack","SmallestPixel","Templeos","ProggyTiny","ProggyClean","Retro","QuinqueFive","Micro","Elektr","Stardos","Dantene","MatchaWorld","Minecraft","MonimerSerif","Starborn"}) do
+                pcall(function() delfile("bfui/Fonts/"..n.."/"..n..".font") end)
+                pcall(function() delfile("bfui/Fonts/"..n.."/"..n.."Families.json") end)
+            end
+            writefile("bfui/Fonts/.v3", "ok")
+        end
+    end)
+    local function safeReg(path, info)
+        local ok, f = pcall(function() return FontManager:register(path, info) end)
+        if ok and f ~= nil then return f end
+        warn("[fonts] FAILED: " .. tostring(info.name) .. " falling back")
+        return Font.fromEnum(Enum.Font.Montserrat)
+    end
     Assets.Fonts = {
-        Montserrat    = FontManager:register("bfui/Fonts", { name = "MontserratBlack", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/Montserrat-Black.ttf" });
-        SmallestPixel = FontManager:register("bfui/Fonts", { name = "SmallestPixel", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/SmallestPixel.ttf" });
-        Templeos      = FontManager:register("bfui/Fonts", { name = "Templeos", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/Templeos.ttf" });
-        ProggyTiny    = FontManager:register("bfui/Fonts", { name = "ProggyTiny", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/ProggyTiny.ttf" });
-        ProggyClean   = FontManager:register("bfui/Fonts", { name = "ProggyClean", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/ProggyClean.ttf" });
-        Retro         = FontManager:register("bfui/Fonts", { name = "Retro", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/Retro.ttf" });
-        QuinqueFive   = FontManager:register("bfui/Fonts", { name = "QuinqueFive", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/QuinqueFive.ttf" });
-        Micro         = FontManager:register("bfui/Fonts", { name = "Micro", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/Micro.ttf" });
-        Elektr        = FontManager:register("bfui/Fonts", { name = "Elektr", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/Elektr.ttf" });
+        Montserrat    = safeReg("bfui/Fonts", { name = "MontserratBlack", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/Montserrat-Black.ttf" });
+        SmallestPixel = safeReg("bfui/Fonts", { name = "SmallestPixel", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/SmallestPixel.ttf" });
+        Templeos      = safeReg("bfui/Fonts", { name = "Templeos", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/Templeos.ttf" });
+        ProggyTiny    = safeReg("bfui/Fonts", { name = "ProggyTiny", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/ProggyTiny.ttf" });
+        ProggyClean   = safeReg("bfui/Fonts", { name = "ProggyClean", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/ProggyClean.ttf" });
+        Retro         = safeReg("bfui/Fonts", { name = "Retro", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/Retro.ttf" });
+        QuinqueFive   = safeReg("bfui/Fonts", { name = "QuinqueFive", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/QuinqueFive.ttf" });
+        Micro         = safeReg("bfui/Fonts", { name = "Micro", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/Micro.ttf" });
+        Elektr        = safeReg("bfui/Fonts", { name = "Elektr", link = "https://raw.githubusercontent.com/shloopyp/s.win/main/Fonts/Elektr.ttf" });
+        Stardos       = safeReg("bfui/Fonts", { name = "Stardos", link = "https://raw.githubusercontent.com/google/fonts/main/ofl/stardosstencil/StardosStencil%5Bwght%5D.ttf" });
+        Dantene       = safeReg("bfui/Fonts", { name = "Dantene", link = "https://raw.githubusercontent.com/zurtiedbritt-coder/Britts-Ui-Library/refs/heads/main/Dantene.otf" });
+        MatchaWorld   = safeReg("bfui/Fonts", { name = "MatchaWorld", link = "https://raw.githubusercontent.com/zurtiedbritt-coder/Britts-Ui-Library/refs/heads/main/Matcha%20World.ttf" });
+        Minecraft     = safeReg("bfui/Fonts", { name = "Minecraft", link = "https://raw.githubusercontent.com/zurtiedbritt-coder/Britts-Ui-Library/refs/heads/main/Minecraft.ttf" });
+        MonimerSerif  = safeReg("bfui/Fonts", { name = "MonimerSerif", link = "https://raw.githubusercontent.com/zurtiedbritt-coder/Britts-Ui-Library/refs/heads/main/MonimerSerif_PERSONAL_USE_ONLY.otf" });
+        Starborn      = safeReg("bfui/Fonts", { name = "Starborn", link = "https://raw.githubusercontent.com/zurtiedbritt-coder/Britts-Ui-Library/refs/heads/main/Starborn.otf" });
     };
 end;
 
@@ -2167,8 +2189,8 @@ do -- Interface Elements
             Rotation = -90,
             Parent = Page.TabButton,
             Transparency = NumberSequence.new{
-                NumberSequenceKeypoint.new(0, 0.69),   
-                NumberSequenceKeypoint.new(1, 1)  
+                NumberSequenceKeypoint.new(0, 0.3),
+                NumberSequenceKeypoint.new(1, 0.9)
             },
         }):Add({Color = "LineGradient"});
 
@@ -2238,6 +2260,16 @@ do -- Interface Elements
             Size = Page.Size;
             Parent = Page.TabButtonHolder2;
         });
+        if Page.Icon == "" or Page.Icon == nil then
+            Page.ImageButton.Visible = false
+            pcall(function()
+                for _, u in ipairs(Page.TabButtonHolder._obj:GetChildren()) do
+                    if u:IsA("UIListLayout") then
+                        u.HorizontalAlignment = Enum.HorizontalAlignment.Center
+                    end
+                end
+            end)
+        end
 
         Page.NewPage = Framework:New("ScrollingFrame", {
             Name = "NewPage";
@@ -6108,7 +6140,7 @@ do -- Settings
             Settings:Slider({ Name = "Text Size", Flag = "ui_text_size", Min = 1, Max = 18, Default = Interface.FontSize, Callback = function(Value)
                 Framework:SetFontSize(Value)
             end});
-            Settings:Dropdown({ Name = "Font", Options = {"Montserrat", "Elektr", "Smallest Pixel", "ProggyTiny", "TempleOs", "ProggyClean", "Retro", "QuinqueFive", "Micro", "Ubuntu"}, Default = "Montserrat", Callback = function(selected)
+            Settings:Dropdown({ Name = "Font", Options = {"Montserrat", "Elektr", "Stardos", "Dantene", "Matcha World", "Minecraft", "Monimer Serif", "Starborn", "Smallest Pixel", "ProggyTiny", "TempleOs", "ProggyClean", "Retro", "QuinqueFive", "Micro", "Ubuntu"}, Default = "Montserrat", Callback = function(selected)
                 local Fonts = {
                     ["Montserrat"] = Assets.Fonts.Montserrat,
                     ["Smallest Pixel"] = Assets.Fonts.SmallestPixel,
@@ -6119,6 +6151,12 @@ do -- Settings
                     ["QuinqueFive"] = Assets.Fonts.QuinqueFive,
                     ["Micro"] = Assets.Fonts.Micro,
                     ["Elektr"] = Assets.Fonts.Elektr,
+                    ["Stardos"] = Assets.Fonts.Stardos,
+                    ["Dantene"] = Assets.Fonts.Dantene,
+                    ["Matcha World"] = Assets.Fonts.MatchaWorld,
+                    ["Minecraft"] = Assets.Fonts.Minecraft,
+                    ["Monimer Serif"] = Assets.Fonts.MonimerSerif,
+                    ["Starborn"] = Assets.Fonts.Starborn,
                     ["Ubuntu"] = Font.new([[rbxasset://fonts/families/Ubuntu.json]], Enum.FontWeight.Bold),
                 };
                 Framework.CurrentFont = Fonts[selected];
