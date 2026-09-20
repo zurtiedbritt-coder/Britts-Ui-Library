@@ -1,4 +1,4 @@
--- s.win Potassium single-file build
+
 -- order: shim -> Assets -> Framework -> Utilities -> Interface
 pcall(function()
   if getgenv and getgenv().Library and getgenv().Library.Exit then
@@ -6392,57 +6392,166 @@ do -- Glass mode: frosted transparency + blur boost
     end;
 end;
 
-do -- Key gate (key = "Free"): call Interface:KeyGate(function() ...build UI... end)
-    function Interface:KeyGate(onSuccess, keyText)
-        keyText = keyText or "Free"
-        local gate = { Done = false }
+do -- Glass loader + upgraded key gate (keys table or single; remembers valid key)
+    local function glassCard(holder, w, h)
+        local bg = Framework:New("Frame", {
+            Parent = holder,
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+            Size = UDim2.new(0, w, 0, h),
+            BackgroundTransparency = 0.25,
+            BorderSizePixel = 0,
+        }):Add({BackgroundColor3 = "Window"})
+        Framework:New("UICorner", { Parent = bg, CornerRadius = UDim.new(0, 8) })
+        Framework:New("UIStroke", { Parent = bg, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, LineJoinMode = Enum.LineJoinMode.Round }):Add({Color = "Outline"})
+        return bg
+    end
+
+    function Interface:LoadingScreen(statuses, duration, callback)
+        statuses = statuses or {"Loading themes...", "Loading configs...", "Loading music...", "Welcome"}
+        duration = duration or 1.6
+        local holder = Framework:New("ScreenGui", {
+            Parent = safeHui(),
+            Name = "BFUILoad",
+            IgnoreGuiInset = Enum.ScreenInsets.DeviceSafeInsets,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+            DisplayOrder = 200,
+        })
+        local bg = glassCard(holder, 320, 170)
+        Framework:New("TextLabel", {
+            Parent = bg, BackgroundTransparency = 1,
+            Position = UDim2.new(0, 0, 0, 16), Size = UDim2.new(1, 0, 0, 24),
+            FontFace = Interface.Font, TextSize = 16, Text = "Britts Free UI",
+        }):Add({TextColor3 = "Active"})
+        Framework:New("TextLabel", {
+            Parent = bg, BackgroundTransparency = 1,
+            Position = UDim2.new(0, 0, 0, 40), Size = UDim2.new(1, 0, 0, 14),
+            FontFace = Interface.Font, TextSize = 11, Text = "build 1.0.0",
+        }):Add({TextColor3 = "Inactive"})
+        local barBg = Framework:New("Frame", {
+            Parent = bg, BorderSizePixel = 0,
+            Position = UDim2.new(0, 24, 0, 96), Size = UDim2.new(1, -48, 0, 6),
+        }):Add({BackgroundColor3 = "Outline"})
+        Framework:New("UICorner", { Parent = barBg, CornerRadius = UDim.new(1, 0) })
+        local fill = Framework:New("Frame", {
+            Parent = barBg, BorderSizePixel = 0,
+            Size = UDim2.new(0, 0, 1, 0),
+        }):Add({BackgroundColor3 = "Accent"})
+        Framework:New("UICorner", { Parent = fill, CornerRadius = UDim.new(1, 0) })
+        local status = Framework:New("TextLabel", {
+            Parent = bg, BackgroundTransparency = 1,
+            Position = UDim2.new(0, 0, 0, 112), Size = UDim2.new(1, 0, 0, 16),
+            FontFace = Interface.Font, TextSize = 12, Text = statuses[1],
+        }):Add({TextColor3 = "Inactive"})
+        task.spawn(function()
+            local step = duration / #statuses
+            for i, s in ipairs(statuses) do
+                status.Text = s
+                Framework:Tween(fill, {Size = UDim2.new(i / #statuses, 0, 1, 0)}, step * 0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                task.wait(step)
+            end
+            Framework:Tween(bg, {BackgroundTransparency = 1}, 0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            task.wait(0.32)
+            holder:Destroy()
+            if callback then task.spawn(callback) end
+        end)
+    end;
+
+    function Interface:KeyGate(onSuccess, keys)
+        local valid = {}
+        if type(keys) == "table" then valid = keys
+        elseif keys ~= nil then valid = {tostring(keys)}
+        else valid = {"Free"} end
+        local gate = { Done = false, Key = nil }
+        local keyFile = gamepath .. "key.txt"
+        local saved = nil
+        pcall(function() if isfile(keyFile) then saved = readfile(keyFile) end end)
+        local function isValid(k)
+            for _, v in ipairs(valid) do if k == v then return true end end
+            return false
+        end
         local holder = Framework:New("ScreenGui", {
             Parent = safeHui(),
             Name = "KeyGate",
             IgnoreGuiInset = Enum.ScreenInsets.DeviceSafeInsets,
             ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-            DisplayOrder = 50,
+            DisplayOrder = 150,
         })
-        local bg = Framework:New("Frame", {
-            Parent = holder,
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(0.5, 0, 0.5, 0),
-            Size = UDim2.new(0, 300, 0, 150),
-        }):Add({BackgroundColor3 = "Window"})
-        Framework:New("UICorner", { Parent = bg, CornerRadius = UDim.new(0, 6) })
-        Framework:New("UIStroke", { Parent = bg, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, LineJoinMode = Enum.LineJoinMode.Round }):Add({Color = "Outline"})
-        local title = Framework:New("TextLabel", {
+        local bg = glassCard(holder, 320, 226)
+        local function pass(key)
+            gate.Done = true
+            gate.Key = key
+            pcall(function() writefile(keyFile, key) end)
+            holder:Destroy()
+            if onSuccess then task.spawn(onSuccess) end
+        end
+        Framework:New("TextLabel", {
             Parent = bg, BackgroundTransparency = 1,
-            Position = UDim2.new(0, 0, 0, 12), Size = UDim2.new(1, 0, 0, 22),
-            FontFace = Interface.Font, TextSize = 14, Text = "Enter Key",
+            Position = UDim2.new(0, 0, 0, 14), Size = UDim2.new(1, 0, 0, 24),
+            FontFace = Interface.Font, TextSize = 16, Text = "Britts Free UI",
         }):Add({TextColor3 = "Active"})
+        Framework:New("TextLabel", {
+            Parent = bg, BackgroundTransparency = 1,
+            Position = UDim2.new(0, 0, 0, 38), Size = UDim2.new(1, 0, 0, 14),
+            FontFace = Interface.Font, TextSize = 11, Text = "build 1.0.0",
+        }):Add({TextColor3 = "Inactive"})
+        local x = Framework:New("TextButton", {
+            Parent = bg, Position = UDim2.new(1, -28, 0, 6), Size = UDim2.new(0, 22, 0, 22),
+            FontFace = Interface.Font, TextSize = 13, Text = "X", AutoButtonColor = false,
+            BackgroundTransparency = 1,
+        }):Add({TextColor3 = "Inactive"})
+        Framework:Connect(x.MouseButton1Click, function() holder:Destroy() end)
         local box = Framework:New("TextBox", {
-            Parent = bg, Position = UDim2.new(0, 20, 0, 48), Size = UDim2.new(1, -40, 0, 30),
-            FontFace = Interface.Font, TextSize = 13, Text = "", PlaceholderText = "Key = Free",
+            Parent = bg, Position = UDim2.new(0, 20, 0, 66), Size = UDim2.new(1, -40, 0, 32),
+            FontFace = Interface.Font, TextSize = 13, Text = "", PlaceholderText = "Enter key...",
             ClearTextOnFocus = false,
         }):Add({TextColor3 = "Active", BackgroundColor3 = "Middle", PlaceholderColor3 = "Inactive"})
         Framework:New("UICorner", { Parent = box, CornerRadius = UDim.new(0, 4) })
         local msg = Framework:New("TextLabel", {
             Parent = bg, BackgroundTransparency = 1,
-            Position = UDim2.new(0, 0, 0, 82), Size = UDim2.new(1, 0, 0, 16),
+            Position = UDim2.new(0, 0, 0, 104), Size = UDim2.new(1, 0, 0, 16),
             FontFace = Interface.Font, TextSize = 12, Text = "",
         }):Add({TextColor3 = "Inactive"})
         local btn = Framework:New("TextButton", {
-            Parent = bg, Position = UDim2.new(0, 20, 1, -44), Size = UDim2.new(1, -40, 0, 30),
+            Parent = bg, Position = UDim2.new(0, 20, 0, 128), Size = UDim2.new(1, -40, 0, 32),
             FontFace = Interface.Font, TextSize = 13, Text = "Unlock", AutoButtonColor = false,
         }):Add({BackgroundColor3 = "Accent", TextColor3 = "Middle"})
         Framework:New("UICorner", { Parent = btn, CornerRadius = UDim.new(0, 4) })
+        Framework:New("TextLabel", {
+            Parent = bg, BackgroundTransparency = 1,
+            Position = UDim2.new(0, 0, 1, -22), Size = UDim2.new(1, 0, 0, 14),
+            FontFace = Interface.Font, TextSize = 11, Text = "Need a key? Ask for one.",
+        }):Add({TextColor3 = "Inactive"})
+        local basePos = bg.Position
+        local function shake()
+            task.spawn(function()
+                for _, dx in ipairs({-8, 8, -5, 5, 0}) do
+                    Framework:Tween(bg, {Position = UDim2.new(0.5, dx, 0.5, 0)}, 0.05, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+                    task.wait(0.055)
+                end
+                bg.Position = basePos
+            end)
+        end
         local function try()
-            if box.Text == keyText then
-                gate.Done = true
-                holder:Destroy()
-                if onSuccess then task.spawn(onSuccess) end
+            local k = tostring(box.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            if isValid(k) then
+                msg.Text = "Welcome"
+                task.wait(0.4)
+                pass(k)
             else
-                msg.Text = "Wrong key. Hint: Free"
+                msg.Text = "Invalid key"
+                shake()
             end
         end
-        Framework:Connect(btn.MouseButton1Click, try)
-        Framework:Connect(box.FocusLost, function(enter) if enter then try() end end)
+        Framework:Connect(btn.MouseButton1Click, function() task.spawn(try) end)
+        Framework:Connect(box.FocusLost, function(enter) if enter then task.spawn(try) end end)
+        if saved and isValid(tostring(saved):gsub("%s+", "")) then
+            msg.Text = "Welcome back"
+            task.spawn(function()
+                task.wait(0.6)
+                if bg._obj.Parent then pass(tostring(saved):gsub("%s+", "")) end
+            end)
+        end
         return gate
     end;
 end;
@@ -6662,7 +6771,9 @@ end;
 
 do -- QuickStart: first window with Rejoin + Themes tab
     function Interface:QuickStart()
+        Interface:LoadingScreen(nil, nil, function()
         local W = Interface:Window({Name = "Britts Free UI", Size = UDim2.fromOffset(550, 600)})
+        Interface.MainWindow = W
         local Home = W:Tab({Name = "Home"})
         local HL = Home:Section({Name = "Main", Side = "left"})
         HL:Button({Name = "Rejoin", Callback = function()
@@ -6679,7 +6790,8 @@ do -- QuickStart: first window with Rejoin + Themes tab
         local Set = W:Tab({Name = "Settings"})
         Interface:Configs(Set)
         Interface:General(Set)
-        return W
+        end)
+        return nil
     end;
 end;
 
