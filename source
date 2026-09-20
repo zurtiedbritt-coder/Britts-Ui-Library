@@ -1207,7 +1207,7 @@ do -- Interface Elements
         if Interface.IsMobile then
             local vs = Vector2.new(900, 600)
             pcall(function() vs = workspace.CurrentCamera.ViewportSize end)
-            startScale = math.clamp(vs.X / 1000, 0.55, 0.85)
+            startScale = math.clamp(math.min(vs.X / 600, vs.Y / 650), 0.35, 1)
         end
         Window.UIScale = Framework:New("UIScale", { Parent = BG, Scale = startScale });
         Interface.UIScaleDefault = math.floor(startScale * 100 + 0.5)
@@ -6124,7 +6124,7 @@ do -- Settings
                 Framework.CurrentFont = Fonts[selected];
                 Framework:ApplyFontSettings();
             end});
-            Settings:Slider({ Name = "UI Scale", Flag = "ui_scale", Min = 50, Max = 150, Default = Interface.UIScaleDefault or 100, Suffix = "%", Callback = function(Value)
+            Settings:Slider({ Name = "UI Scale", Flag = "ui_scale", Min = 30, Max = 150, Default = Interface.UIScaleDefault or 100, Suffix = "%", Callback = function(Value)
                 local s = Value / 100
                 for _, w in ipairs(Interface.Windows or {}) do
                     pcall(function() w.UIScale.Scale = s end)
