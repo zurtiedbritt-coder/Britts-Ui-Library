@@ -1,0 +1,7 @@
+instructions on how to execute
+use this
+local I = loadstring(game:HttpGet("https://raw.githubusercontent.com/zurtiedbritt-coder/Britts-Ui-Library/refs/heads/main/source"))()
+I:KeyGate(function() I:QuickStart() end)
+and u have to mkae sure it has
+I:KeyGate(function() I:QuickStart() end)
+or else it wont load
