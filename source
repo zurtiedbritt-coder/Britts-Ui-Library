@@ -209,6 +209,23 @@ do
     end;
 end;
 
+-- UI sounds (drop a short click.mp3 in bfui/Sounds/ to enable)
+do
+    Framework.UISound = { On = false, Volume = 0.5 };
+    function Framework:Click()
+        if not self.UISound or not self.UISound.On then return end
+        pcall(function()
+            if not isfile("bfui/Sounds/click.mp3") then return end
+            local s = Instance.new("Sound")
+            s.SoundId = getcustomasset("bfui/Sounds/click.mp3")
+            s.Volume = self.UISound.Volume or 0.5
+            s.Parent = game:GetService("SoundService")
+            s:Play()
+            s.Ended:Connect(function() s:Destroy() end)
+        end)
+    end;
+end;
+
 -- Instances
 do
     function Framework:New(Class, Properties, Events, Conditions)
@@ -571,6 +588,24 @@ do
         self:UpdateAccent(color, transparency or 0)
     end;
 
+    Framework.Rainbow = Framework.Rainbow or {};
+    function Framework:SetRainbow(on)
+        self.Rainbow = self.Rainbow or {}
+        self.Rainbow.On = on
+        if on and not self.Rainbow.Running then
+            self.Rainbow.Running = true
+            task.spawn(function()
+                local h = 0
+                while self.Rainbow.On do
+                    h = (h + 0.015) % 1
+                    pcall(function() self:UpdateAccent(Color3.fromHSV(h, 0.85, 1), 0) end)
+                    task.wait(0.1)
+                end
+                self.Rainbow.Running = false
+            end)
+        end
+    end;
+
     function Framework:SetGradient(c1, c2)
         c2 = c2 or self.Theme.Colors.Window
         self.Theme.Colors.LineGradient = {
@@ -604,6 +639,7 @@ end;
 do
     Framework.BlurStrength = Framework.BlurStrength or 10;
     function Framework:FadeIn(Parent, BlinkDuration, PauseBefore)
+        if self.PerfMode then return end
         BlinkDuration = BlinkDuration or 0.22;
         PauseBefore = PauseBefore or 0.05;
         self._FadeTokens = self._FadeTokens or {};
@@ -707,6 +743,7 @@ do
 
         local dragging, drag_start, start_pos;
         Framework:Connect(BG.InputBegan, function(i)
+            if Framework.Locked then return end
             if (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
                 dragging, drag_start, start_pos = true, i.Position, BG.Position;
             end;
@@ -751,6 +788,7 @@ end;
 -- Glow
 do
     function Framework:Glow(Parent: Instance, Color: Color3): {Frame}
+        if self.PerfMode then return {} end
         local Thicknesses = {2, 3, 7, 5};
         local Frames: {Frame} = {};
 
@@ -784,6 +822,12 @@ end;
 -- Unload
 do
    function Framework:Unload()
+        pcall(function()
+            local I = getgenv and getgenv().s_win_Interface
+            if I and I.GetConfig then
+                writefile("bfui/Configs/autosave.cfg", I:GetConfig())
+            end
+        end)
         for i = #self.Connections, 1, -1 do
             local connection = self.Connections[i];
             if connection.Connected then
@@ -1055,6 +1099,9 @@ do -- Interface Elements
     end;
 
     function Interface:Notification(message, duration)
+        Interface.NotifLog = Interface.NotifLog or {}
+        table.insert(Interface.NotifLog, 1, tostring(message))
+        while #Interface.NotifLog > 30 do table.remove(Interface.NotifLog) end
         local notification = {Container = nil, Objects = {}}
         local Position = Vector2.new(20, 20)
 
@@ -1266,7 +1313,7 @@ do -- Interface Elements
         do -- Snowfall: subtle neutral flakes (no logos)
             local Snow = { MinSize = 2, MaxSize = 6, FallTimeMin = 6, FallTimeMax = 12, SpawnRate = 0.35 }
             function Snow.Spawn()
-                if not Interface.Open then return end
+                if not Interface.Open or Framework.PerfMode then return end
                 local size = math.random(Snow.MinSize, Snow.MaxSize)
                 local flake = Framework:New("Frame", {
                     Parent = BG.Parent,
@@ -1275,7 +1322,8 @@ do -- Interface Elements
                     BorderSizePixel = 0,
                     Position = UDim2.new(math.random(), 0, -0.05, 0),
                     ZIndex = -1,
-                }):Add({BackgroundColor3 = "Active"})
+                    BackgroundColor3 = Interface.SnowAccent and Framework.Theme.Colors.Accent or Framework.Theme.Colors.Active,
+                })
                 Framework:New("UICorner", { Parent = flake, CornerRadius = UDim.new(1, 0) })
                 local duration = math.random(Snow.FallTimeMin, Snow.FallTimeMax)
                 Framework:Tween(flake, { Position = UDim2.new(flake.Position.X.Scale, 0, 1.1, 0) }, duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, function()
@@ -1447,6 +1495,36 @@ do -- Interface Elements
             BackgroundTransparency = 1,
         });
 
+        Window.Collapsed = false
+        Window.FullSize = Window.Size
+        local colBtn = Framework:New("TextButton", {
+            Parent = Window.LogoHolder,
+            Position = UDim2.new(1, -22, 0, 2),
+            Size = UDim2.new(0, 20, 0, 20),
+            Text = "-",
+            FontFace = Interface.Font,
+            TextSize = 16,
+            AutoButtonColor = false,
+            BackgroundTransparency = 1,
+            ZIndex = 5,
+        }):Add({TextColor3 = "Active"})
+        Framework:Connect(colBtn.MouseButton1Click, function()
+            Window.Collapsed = not Window.Collapsed
+            colBtn.Text = Window.Collapsed and "+" or "-"
+            if Window.Collapsed then
+                Framework:Tween(BG, {Size = UDim2.new(0, Window.FullSize.X.Offset, 0, 60)}, 0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                task.delay(0.2, function()
+                    if Window.Collapsed then
+                        Window.Middle.Visible = false
+                        Window.Bottom.Visible = false
+                    end
+                end)
+            else
+                Window.Middle.Visible = true
+                Window.Bottom.Visible = true
+                Framework:Tween(BG, {Size = Window.FullSize}, 0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            end
+        end)
         -- Middle
         Window.Middle = Framework:New('TextButton', {
             Name = "Middle",
@@ -1574,6 +1652,29 @@ do -- Interface Elements
             end)
             if thumb ~= "" then Window.ProfileAvatar.Image = thumb end
         end);
+        Window.SessionTime = Framework:New('TextLabel', {
+            Text = "00:00",
+            AutomaticSize = Enum.AutomaticSize.XY,
+            FontFace = Interface.Font;
+            TextSize = Interface.FontSize;
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Center,
+            Parent = Window.DiscordHolder,
+            BackgroundTransparency = 1,
+            LayoutOrder = 4,
+        }):Add({TextColor3 = "Inactive"});
+        do
+            local _t0 = os.clock()
+            task.spawn(function()
+                while true do
+                    task.wait(1)
+                    pcall(function()
+                        local s = math.floor(os.clock() - _t0)
+                        Window.SessionTime.Text = string.format("%d:%02d:%02d", math.floor(s / 3600), math.floor(s / 60) % 60, s % 60)
+                    end)
+                end
+            end)
+        end;
 
         --[[Framework:New("UIListLayout", {
             Name = "UIListLayout";
@@ -1639,8 +1740,15 @@ do -- Interface Elements
 
         -- Other (system cursor stays; custom cursor hidden)
         Services.UserInputService.MouseIconEnabled = true;
+        Window.CursorGui = Framework:New("ScreenGui", {
+            Parent = safeHui(),
+            Name = "BFUICursor",
+            IgnoreGuiInset = Enum.ScreenInsets.DeviceSafeInsets,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+            DisplayOrder = 200,
+        })
         Window.Cursor = Framework:New('ImageLabel', {
-            Parent = BG.Parent,
+            Parent = Window.CursorGui,
             BackgroundTransparency = 1,
             Image = Assets.Images:Require("Cursor"),
             AnchorPoint = Vector2.new(0.5, 0.5),
@@ -1673,6 +1781,7 @@ do -- Interface Elements
                 target = UDim2.new(0.5,-BG.AbsoluteSize.X/2,0.5,-BG.AbsoluteSize.Y/2);
             };
             Framework:Drag(BG, 10, state)
+            Window.DragState = state
 
             local ModalElement = Framework:New('TextButton', {
                 BackgroundTransparency = 1;
@@ -1699,13 +1808,13 @@ do -- Interface Elements
                             Framework:Tween(Blur, {Size = Framework.BlurStrength}, 0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
                             Framework:Tween(Window.BackgroundT, {BackgroundTransparency = 0.4}, 0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
                             oldMouse = true;
-                            Services.UserInputService.MouseIconEnabled = true;
+                            Services.UserInputService.MouseIconEnabled = not Interface.Flags["custom_cursor"];
                             Interface.ScreenGui.Enabled = true;
                             state.target = state.pos;
                             task.delay(0.2, function() Interface.CanOpen = true end);
                         else
                             state.target = state.pos;
-                            Services.UserInputService.MouseIconEnabled = true;
+                            Services.UserInputService.MouseIconEnabled = not Interface.Flags["custom_cursor"];
                             if Interface.CloseMode == "Instant" then
                                 pcall(function() Blur.Size = 0 end)
                                 pcall(function() Window.BackgroundT.BackgroundTransparency = 1 end)
@@ -1726,6 +1835,14 @@ do -- Interface Elements
                     if Interface.Bind and (input.KeyCode == Interface.Bind or input.UserInputType == Interface.Bind) then
                         toggleUI()
                     end;
+                end);
+                Framework:Connect(Services.UserInputService.InputBegan, function(input, gpe)
+                    if gpe then return end
+                    if not Interface.Open then return end
+                    if Services.UserInputService:GetFocusedTextBox() then return end
+                    if input.KeyCode == Enum.KeyCode.Slash then
+                        pcall(function() Window.SearchText:CaptureFocus() end)
+                    end
                 end);
                 if Interface.IsMobile then
                     local mGui = Framework:New("ScreenGui", {
@@ -2435,7 +2552,10 @@ do -- Interface Elements
             end
         end)
         Framework:Connect(Page.TabButton.MouseButton1Down, function()
-            if (not Page.Open) then
+            Framework:Click()
+            if Interface.TabToggleMode and Page.Open then
+                Page:Turn(false);
+            elseif (not Page.Open) then
                 for _, v in pairs(Page.Window.Pages) do
                     if v.Open and v ~= Page then
                         v:Turn(false);
@@ -2918,7 +3038,7 @@ do -- Interface Elements
                 Size = UDim2.new(1, 0, 1, 0);
                 Text = "",
                 AutoButtonColor = false,
-                Parent = Toggle.Section.Page.Elements.Main;
+                Parent = Toggle.Section.Page.Elements.Main or Toggle.Section.Page.Elements.New_Page;
                 BackgroundTransparency = 1;
                 Visible = false;
                 ZIndex = 9999;
@@ -3080,7 +3200,7 @@ do -- Interface Elements
 
         local function SetState()
             if (Toggle.Risky and not Toggle.Toggled) then
-                for _, v in pairs(Toggle.Section.Page.Elements.Main:GetChildren()) do
+                for _, v in pairs((Toggle.Section.Page.Elements.Main or Toggle.Section.Page.Elements.New_Page):GetChildren()) do
                     if v.Name == "Risky Frame" then
                         v.Visible = false;
                         v.BackgroundTransparency = 1;
@@ -4911,6 +5031,7 @@ do -- Interface Elements
         }):Add({TextColor3 = "Middle"})
 
         Framework:Connect(Button.NewButton.MouseButton1Down, function()
+            Framework:Click()
             Button.Callback();
         end);
 
@@ -5728,7 +5849,7 @@ do -- Interface Elements
             BorderSizePixel = 0,
             Size = UDim2.new(1, -23, 1, -5),
             Position = UDim2.new(0, 10, 0, 1),
-            Parent = Playerlist.Page.Elements.Main
+            Parent = Playerlist.Page.Elements.New_Page
         }):Add({BackgroundColor3 = "Window"});
 
         Framework:New("UIStroke", {
@@ -6112,6 +6233,53 @@ do -- Interface Elements
             end
         end)
         --
+        local CopyBtn = Framework:New("TextButton", {
+            Name = "Copy",
+            FontFace = Interface.Font,
+            Text = "",
+            TextColor3 = Color3.fromRGB(0, 0, 0),
+            TextSize = Interface.FontSize,
+            AutoButtonColor = false,
+            BorderSizePixel = 0,
+            Position = UDim2.new(1, -210, 1, -34),
+            Size = UDim2.new(0, 100, 0, 25),
+            Parent = NewPlayer
+        }):Add({BackgroundColor3 = "Window"});
+
+        Framework:New('UICorner', {
+            Parent = CopyBtn,
+            CornerRadius = UDim.new(0, 5)
+        });
+
+        Framework:New("UIStroke", {
+            Name = "UIStroke",
+            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            LineJoinMode = Enum.LineJoinMode.Round,
+            Parent = CopyBtn
+        }):Add({Color = "Outline"});
+
+        local CopyLabel = Framework:New("TextLabel", {
+            Name = "CopyLabel",
+            FontFace = Interface.Font,
+            Text = "Copy Info",
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            TextSize = Interface.FontSize,
+            TextStrokeTransparency = 0,
+            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundTransparency = 1,
+            BorderColor3 = Color3.fromRGB(0, 0, 0),
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 1, 0),
+            Parent = CopyBtn
+        })
+
+        Framework:Connect(CopyBtn.MouseButton1Click, function()
+            local p = Playerlist.CurrentPlayer
+            if p and setclipboard then
+                setclipboard(p.Name .. " (@" .. p.DisplayName .. ") : " .. p.UserId)
+            end
+        end)
+        --
         createoptions(Services.Players:GetPlayers())
         --
         Services.Players.PlayerAdded:Connect(function()
@@ -6168,6 +6336,64 @@ do -- Settings
                     pcall(function() w.UIScale.Scale = s end)
                 end
             end});
+            Settings:Toggle({Name = "Performance", Flag = "perf_mode", Default = false, Callback = function(v)
+                Framework.PerfMode = v
+                if v then
+                    Framework.PerfOld = Framework.BlurStrength
+                    Framework.BlurStrength = 0
+                    pcall(function() if Framework.BlurObject then Framework.BlurObject.Size = 0 end end)
+                else
+                    Framework.BlurStrength = Framework.PerfOld or 10
+                end
+            end});
+            Settings:Toggle({Name = "UI Sounds", Flag = "ui_sounds", Default = false, Callback = function(v)
+                Framework.UISound.On = v
+            end});
+            Settings:Slider({Name = "Sound Volume", Flag = "ui_snd_vol", Min = 0, Max = 100, Default = 50, Callback = function(v)
+                Framework.UISound.Volume = v / 100
+            end});
+            Settings:Toggle({Name = "Layout Lock", Flag = "layout_lock", Default = false, Callback = function(v)
+                Framework.Locked = v
+            end});
+            Settings:Toggle({Name = "Custom Cursor", Flag = "custom_cursor", Default = false, Callback = function(v)
+                pcall(function()
+                    for _, w in ipairs(Interface.Windows or {}) do
+                        if w.Cursor then w.Cursor.Visible = v end
+                    end
+                    Services.UserInputService.MouseIconEnabled = not v
+                end)
+                if v then
+                    Services.UserInputService.MouseIconEnabled = false
+                else
+                    Services.UserInputService.MouseIconEnabled = true
+                end
+            end}):Colorpicker({Flag = "cursor_color", Default = Color3.fromRGB(200, 200, 200), Callback = function(state)
+                local c = state
+                if type(state) == "table" and state.Color then c = state.Color end
+                pcall(function()
+                    for _, w in ipairs(Interface.Windows or {}) do
+                        if w.Cursor then w.Cursor.ImageColor3 = c end
+                    end
+                end)
+            end});
+            Settings:Toggle({Name = "Tabbed UI", Flag = "tabbed_ui", Default = false, Callback = function(v)
+                Interface.TabToggleMode = v
+            end});
+            Settings:Label({Name = "Snap"});
+            local function snapX(align)
+                local vs = Vector2.new(900, 600)
+                pcall(function() vs = workspace.CurrentCamera.ViewportSize end)
+                for _, w in ipairs(Interface.Windows or {}) do
+                    pcall(function()
+                        local st = w.DragState
+                        if st then
+                            local bw = w.Background.AbsoluteSize.X
+                            st.target = UDim2.new(0.5, align * (vs.X - bw) + bw / 2 - vs.X / 2, 0.5, st.target.Y.Offset)
+                        end
+                    end)
+                end
+            end
+            Settings:Button({Name = "Left", Callback = function() snapX(0) end}):Button({Name = "Center", Callback = function() snapX(0.5) end}):Button({Name = "Right", Callback = function() snapX(1) end});
         end;
         --
         do
@@ -6208,6 +6434,103 @@ do -- Settings
             Colors:Button({Name = "Glass", Callback = function() Framework:SetTheme("Glass") end});
             Colors:Label({Name = "Glass Mode"});
             Colors:Toggle({Name = "Glass Mode", Flag = "GlassMode", Default = false, Callback = function(v) Framework:SetGlass(v) end});
+            Colors:Slider({Name = "Glass Amount", Flag = "glass_amt", Min = 10, Max = 80, Default = 45, Callback = function(v)
+                Framework.GlassAmount = v / 100
+                if Framework.GlassData.On then
+                    for inst in pairs(Framework.GlassData.Saved) do
+                        pcall(function() if inst and inst.Parent then inst.BackgroundTransparency = Framework.GlassAmount end end)
+                    end
+                end
+            end});
+            Colors:Toggle({Name = "Rainbow", Flag = "rainbow", Default = false, Callback = function(v) Framework:SetRainbow(v) end});
+            Colors:Label({Name = "Profiles"});
+            Colors:Textbox({Name = "Name", Flag = "profile_name", Placeholder = "profile name..."});
+            local function profPath(n) return "bfui/Profiles/" .. n .. ".theme" end
+            local function profScan()
+                local out = {}
+                pcall(function()
+                    if not isfolder("bfui/Profiles") then makefolder("bfui/Profiles") end
+                    for _, f in ipairs(listfiles("bfui/Profiles")) do
+                        local n = (f:gsub("\\","/")):match("([^/]+)%.theme$")
+                        if n then table.insert(out, n) end
+                    end
+                end)
+                table.sort(out)
+                return out
+            end
+            local profList = Colors:ListBox({Flag = "profile_list", Options = profScan()});
+            Colors:Button({Name = "Save", Callback = function()
+                local name = Interface.Flags["profile_name"]
+                if name and name ~= "" then
+                    pcall(function()
+                        if not isfolder("bfui/Profiles") then makefolder("bfui/Profiles") end
+                        local L = {}
+                        for _, k in ipairs({"Accent","Active","Inactive","Window","Middle","Outline","Outline2"}) do
+                            local c = Framework.Theme.Colors[k]
+                            table.insert(L, k .. "=" .. math.floor(c.R * 255) .. "," .. math.floor(c.G * 255) .. "," .. math.floor(c.B * 255))
+                        end
+                        writefile(profPath(name), table.concat(L, "\n"))
+                    end)
+                    profList:Refresh(profScan())
+                    Interface:Notification("Saved profile [" .. name .. "].", 3)
+                end
+            end}):Button({Name = "Load", Callback = function()
+                local sel = Interface.Flags["profile_list"]
+                if type(sel) == "table" then sel = sel[1] end
+                if sel and sel ~= "" then
+                    local ups = {Accent = "UpdateAccent", Active = "UpdateActive", Inactive = "UpdateInactive", Window = "UpdateWindow", Middle = "UpdateMiddle", Outline = "UpdateOutline", Outline2 = "UpdateOutline2"}
+                    pcall(function()
+                        local raw = readfile(profPath(sel))
+                        for _, line in ipairs(string.split(raw, "\n")) do
+                            local k, v = line:match("^(%w+)=(%d+,%d+,%d+)$")
+                            if k and v and ups[k] then
+                                local r, g, b = v:match("(%d+),(%d+),(%d+)")
+                                Framework[ups[k]](Framework, Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b)), 0)
+                            end
+                        end
+                    end)
+                    Interface:Notification("Loaded profile [" .. sel .. "].", 3)
+                end
+            end});
+            Colors:Button({Name = "Delete", Callback = function()
+                local sel = Interface.Flags["profile_list"]
+                if type(sel) == "table" then sel = sel[1] end
+                if sel and sel ~= "" then
+                    pcall(function() delfile(profPath(sel)) end)
+                    profList:Refresh(profScan())
+                end
+            end});
+            Colors:Textbox({Name = "Share", Flag = "theme_share", Placeholder = "paste theme..."});
+            local function themeToString()
+                local L = {}
+                for _, k in ipairs({"Accent","Active","Inactive","Window","Middle","Outline","Outline2"}) do
+                    local c = Framework.Theme.Colors[k]
+                    table.insert(L, k .. "=" .. math.floor(c.R * 255) .. "," .. math.floor(c.G * 255) .. "," .. math.floor(c.B * 255))
+                end
+                return table.concat(L, "\n")
+            end
+            local function themeFromString(raw)
+                local ups = {Accent = "UpdateAccent", Active = "UpdateActive", Inactive = "UpdateInactive", Window = "UpdateWindow", Middle = "UpdateMiddle", Outline = "UpdateOutline", Outline2 = "UpdateOutline2"}
+                for _, line in ipairs(string.split(raw, "\n")) do
+                    local k, v = line:match("^(%w+)=(%d+,%d+,%d+)$")
+                    if k and v and ups[k] then
+                        local r, g, b = v:match("(%d+),(%d+),(%d+)")
+                        Framework[ups[k]](Framework, Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b)), 0)
+                    end
+                end
+            end
+            Colors:Button({Name = "Copy", Callback = function()
+                if setclipboard then
+                    setclipboard(themeToString())
+                    Interface:Notification("Copied theme.", 3)
+                end
+            end}):Button({Name = "Import", Callback = function()
+                local s = Interface.Flags["theme_share"]
+                if s and s ~= "" then
+                    themeFromString(s)
+                    Interface:Notification("Imported theme.", 3)
+                end
+            end});
         end;
         --
         do
@@ -6226,6 +6549,21 @@ do -- Settings
                     end
                 end)
             end});
+            VisualIndicators:Toggle({Name = "Show Stats", Flag = "Show Stats", Default = false, Callback = function(State)
+                local c = Interface:StatsChip()
+                c:SetVisible(State)
+            end});
+        end;
+        --
+        do
+            local LogSec = Tab:Section({Name = "Notifications", Side = "Left"});
+            local logList = LogSec:ListBox({Flag = "notif_log", Options = {"empty"}});
+            LogSec:Button({Name = "Refresh Log", Callback = function()
+                local items = {}
+                for _, m in ipairs(Interface.NotifLog or {}) do table.insert(items, tostring(m):sub(1, 40)) end
+                if #items == 0 then items = {"empty"} end
+                logList:Refresh(items)
+            end});
         end;
         --
         do
@@ -6238,6 +6576,16 @@ do -- Settings
             Uninject:Button({Name = "Unload", Callback = function()
                 Framework:Tween(Blur, {Size = 0}, 0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut);
                 Framework:Unload();
+            end});
+            Uninject:Button({Name = "Reset UI", Callback = function()
+                Framework:SetTheme("Default")
+                if Framework.GlassData.On then Framework:SetGlass(false) end
+                Framework:SetRainbow(false)
+                Framework.BlurStrength = 10
+                for _, w in ipairs(Interface.Windows or {}) do
+                    pcall(function() w.UIScale.Scale = 1 end)
+                end
+                Interface:Notification("UI reset.", 3)
             end});
         end;
         --
@@ -6364,6 +6712,19 @@ do -- Settings
                     cfg_list();
                 end;
             end});
+            Configuration:Textbox({Name = "Share", Flag = "cfg_share", Placeholder = "paste share string..."});
+            Configuration:Button({Name = "Copy", Callback = function()
+                if setclipboard then
+                    setclipboard(Interface:GetConfig())
+                    Interface:Notification("Copied setup.", 3)
+                end
+            end}):Button({Name = "Import", Callback = function()
+                local s = Interface.Flags["cfg_share"]
+                if s and s ~= "" then
+                    local ok = Interface:LoadConfig(s)
+                    Interface:Notification(ok and "Imported." or "Import failed.", 3)
+                end
+            end});
         end;
         --
         do
@@ -6418,6 +6779,58 @@ do -- Settings
     end;
 end;
 
+do -- Stats chip (FPS + ping, toggleable)
+    function Interface:StatsChip()
+        if Interface.StatsChipGui then return Interface.StatsChipGui end
+        local chip = {}
+        local holder = Framework:New("ScreenGui", {
+            Parent = safeHui(),
+            Name = "BFUIStats",
+            IgnoreGuiInset = Enum.ScreenInsets.DeviceSafeInsets,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+            DisplayOrder = 11,
+        })
+        local bg = Framework:New("Frame", {
+            Parent = holder,
+            Position = UDim2.new(0, 12, 0, 12),
+            Size = UDim2.new(0, 170, 0, 26),
+            Visible = false,
+        }):Add({BackgroundColor3 = "Window"})
+        Framework:New("UICorner", { Parent = bg, CornerRadius = UDim.new(0, 5) })
+        Framework:New("UIStroke", { Parent = bg, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, LineJoinMode = Enum.LineJoinMode.Round }):Add({Color = "Outline"})
+        local label = Framework:New("TextLabel", {
+            Parent = bg, BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 1, 0),
+            FontFace = Interface.Font, TextSize = 12, Text = "FPS: ... | Ping: ...",
+        }):Add({TextColor3 = "Active"})
+        local fps, last = 60, os.clock()
+        Framework:Connect(Services.RunService.RenderStepped, function()
+            local nowT = os.clock()
+            local dt = nowT - last
+            last = nowT
+            if dt > 0 then fps = fps * 0.9 + (1 / dt) * 0.1 end
+        end)
+        task.spawn(function()
+            while true do
+                task.wait(1)
+                pcall(function()
+                    local ping = "..."
+                    local stats = Services.Stats.Network.ServerStatsItem
+                    if stats and stats:FindFirstChild("Data Ping") then
+                        ping = tostring(math.floor(stats["Data Ping"]:GetValue()))
+                    end
+                    label.Text = "FPS: " .. tostring(math.floor(fps + 0.5)) .. " | Ping: " .. ping
+                end)
+            end
+        end)
+        function chip:SetVisible(s)
+            pcall(function() bg.Visible = s end)
+        end
+        Interface.StatsChipGui = chip
+        return chip
+    end;
+end;
+
 do -- Glass mode: frosted transparency + blur boost
     Framework.GlassData = { On = false, Saved = {} };
     function Framework:SetGlass(on)
@@ -6430,7 +6843,7 @@ do -- Glass mode: frosted transparency + blur boost
                         local cur = inst.BackgroundTransparency
                         if cur < 1 then
                             self.GlassData.Saved[inst] = cur
-                            inst.BackgroundTransparency = 0.45
+                            inst.BackgroundTransparency = Framework.GlassAmount or 0.45
                         end
                     end
                 end)
@@ -6634,8 +7047,10 @@ do -- Music player tab (plays mp3s from bfui/Music/)
                 if g.Name == "BFUIMini" then g:Destroy() end
             end
         end)
+        Interface.VizOn = true
         local now = S:Label({Name = "Nothing playing"})
         S:Label({Name = "Drop .mp3s in bfui/Music/"})
+        local upNext = S:Label({Name = "Up next: -"})
         -- floating mini bar: logo + track + time left + progress, draggable + sizable
         local miniGui = Framework:New("ScreenGui", {
             Parent = safeHui(),
@@ -6659,16 +7074,90 @@ do -- Music player tab (plays mp3s from bfui/Music/)
         }):Add({TextColor3 = "Accent"})
         local track = Framework:New("TextLabel", {
             Parent = mini, BackgroundTransparency = 1,
-            Position = UDim2.new(0, 34, 0, 4), Size = UDim2.new(1, -70, 0, 16),
+            Position = UDim2.new(0, 34, 0, 4), Size = UDim2.new(1, -144, 0, 16),
             FontFace = Interface.Font, TextSize = 12, Text = "Nothing playing",
             TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
         }):Add({TextColor3 = "Active"})
         local clock = Framework:New("TextLabel", {
             Parent = mini, BackgroundTransparency = 1,
-            Position = UDim2.new(1, -62, 0, 4), Size = UDim2.new(0, 56, 0, 16),
+            Position = UDim2.new(1, -110, 0, 4), Size = UDim2.new(0, 40, 0, 16),
             FontFace = Interface.Font, TextSize = 11, Text = "",
             TextXAlignment = Enum.TextXAlignment.Right,
         }):Add({TextColor3 = "Inactive"})
+        local prevBtn = Framework:New("TextButton", {
+            Parent = mini, AutoButtonColor = false,
+            Position = UDim2.new(1, -68, 0, 4), Size = UDim2.new(0, 14, 0, 16),
+            FontFace = Interface.Font, TextSize = 11, Text = "|<",
+            BackgroundTransparency = 1,
+        }):Add({TextColor3 = "Inactive"})
+        local nextBtn = Framework:New("TextButton", {
+            Parent = mini, AutoButtonColor = false,
+            Position = UDim2.new(1, -36, 0, 4), Size = UDim2.new(0, 14, 0, 16),
+            FontFace = Interface.Font, TextSize = 11, Text = ">|",
+            BackgroundTransparency = 1,
+        }):Add({TextColor3 = "Inactive"})
+        Framework:Connect(prevBtn.MouseButton1Click, function()
+            pcall(function() if Interface.MusicPrev then Interface.MusicPrev() end end)
+        end)
+        local pauseBtn = Framework:New("TextButton", {
+            Parent = mini, AutoButtonColor = false,
+            Position = UDim2.new(1, -52, 0, 4), Size = UDim2.new(0, 14, 0, 16),
+            FontFace = Interface.Font, TextSize = 11, Text = "II",
+            BackgroundTransparency = 1,
+        }):Add({TextColor3 = "Inactive"})
+        Framework:Connect(pauseBtn.MouseButton1Click, function()
+            pcall(function() if Interface.MusicPause then Interface.MusicPause() end end)
+        end)
+        Framework:Connect(nextBtn.MouseButton1Click, function()
+            pcall(function() if Interface.MusicNext then Interface.MusicNext() end end)
+        end)
+        local miniW = 220
+        local barsMiniHolder = Framework:New("Frame", {
+            Parent = mini, BackgroundTransparency = 1, BorderSizePixel = 0,
+            Position = UDim2.new(0, 10, 0, 26), Size = UDim2.new(1, -20, 0, 36),
+        })
+        Framework:New("UIListLayout", {
+            Parent = barsMiniHolder,
+            FillDirection = Enum.FillDirection.Horizontal,
+            VerticalAlignment = Enum.VerticalAlignment.Bottom,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+            Padding = UDim.new(0, 2),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        })
+        local miniBars, miniLevels = {}, {}
+        for i = 1, 12 do
+            miniLevels[i] = 3
+            miniBars[i] = Framework:New("Frame", {
+                Parent = barsMiniHolder,
+                BorderSizePixel = 0,
+                Size = UDim2.new(0, 8, 0, 3),
+                BackgroundColor3 = Framework.Theme.Colors.Accent,
+            })
+            Framework:New("UICorner", { Parent = miniBars[i], CornerRadius = UDim.new(1, 0) })
+        end
+        Interface.MiniBars = { bars = miniBars, levels = miniLevels, holder = barsMiniHolder }
+        local function syncMiniSize()
+            pcall(function()
+                mini.Size = UDim2.new(0, miniW, 0, Interface.VizOn and 82 or 52)
+                barsMiniHolder.Visible = not not Interface.VizOn
+            end)
+        end
+        syncMiniSize()
+        local vizBtn = Framework:New("TextButton", {
+            Parent = mini, AutoButtonColor = false,
+            Position = UDim2.new(1, -20, 0, 4), Size = UDim2.new(0, 14, 0, 16),
+            FontFace = Interface.Font, TextSize = 12, Text = "=",
+            BackgroundTransparency = 1,
+        }):Add({TextColor3 = "Inactive"})
+        Framework:Connect(vizBtn.MouseButton1Click, function()
+            Interface.VizOn = not Interface.VizOn
+            syncMiniSize()
+            if Interface.VizOn then
+                Framework:TweenTheme(vizBtn, {TextColor3 = "Accent"}, 0.15)
+            else
+                Framework:TweenTheme(vizBtn, {TextColor3 = "Inactive"}, 0.15)
+            end
+        end)
         local progBg = Framework:New("Frame", {
             Parent = mini, BorderSizePixel = 0,
             Position = UDim2.new(0, 10, 1, -12), Size = UDim2.new(1, -20, 0, 4),
@@ -6679,6 +7168,33 @@ do -- Music player tab (plays mp3s from bfui/Music/)
             Size = UDim2.new(0, 0, 1, 0),
         }):Add({BackgroundColor3 = "Accent"})
         Framework:New("UICorner", { Parent = progFill, CornerRadius = UDim.new(1, 0) })
+        local seeking = false
+        local function seekTo(input)
+            local w = progBg.AbsoluteSize.X
+            if w <= 0 then return end
+            local r = math.clamp((input.Position.X - progBg.AbsolutePosition.X) / w, 0, 1)
+            pcall(function()
+                if sound.TimeLength > 0 then
+                    sound.TimePosition = r * sound.TimeLength
+                end
+            end)
+        end
+        Framework:Connect(progBg.InputBegan, function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                seeking = true
+                seekTo(input)
+            end
+        end)
+        Framework:Connect(progBg.InputEnded, function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                seeking = false
+            end
+        end)
+        Framework:Connect(Services.UserInputService.InputChanged, function(input)
+            if seeking and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                seekTo(input)
+            end
+        end)
         local function fmt(s)
             s = math.max(0, math.floor(s or 0))
             return string.format("%d:%02d", math.floor(s / 60), s % 60)
@@ -6688,6 +7204,7 @@ do -- Music player tab (plays mp3s from bfui/Music/)
             currentTrack = name
             pcall(function() now:SetText("Now playing: " .. name) end)
             pcall(function() track.Text = name end)
+            pcall(function() if Interface._updateNext then Interface._updateNext(name) end end)
         end
         local function setNote(t)
             pcall(function() now:SetText(t) end)
@@ -6734,6 +7251,20 @@ do -- Music player tab (plays mp3s from bfui/Music/)
             table.sort(out)
             return out
         end
+        local function plist()
+            if type(Interface.MusicQueue) == "table" and #Interface.MusicQueue > 0 then
+                return Interface.MusicQueue
+            end
+            return scan()
+        end
+        Interface._updateNext = function(name)
+            local files = plist()
+            local nx = "-"
+            for i, f in ipairs(files) do
+                if f == name then nx = files[(i % #files) + 1] break end
+            end
+            pcall(function() upNext:SetText("Up next: " .. nx) end)
+        end
         local list = S:ListBox({Flag = "music_file", Options = scan()})
         S:Button({Name = "Refresh", Callback = function()
             list:Refresh(scan())
@@ -6742,7 +7273,7 @@ do -- Music player tab (plays mp3s from bfui/Music/)
             local sel = Interface.Flags["music_file"]
             if type(sel) == "table" then sel = sel[1] end
             if not sel or sel == "" then
-                local files = scan()
+                local files = plist()
                 if #files == 0 then setNote("No mp3s in bfui/Music/") return end
                 sel = files[1]
                 pcall(function() list:Set(sel) end)
@@ -6754,28 +7285,92 @@ do -- Music player tab (plays mp3s from bfui/Music/)
             if ok then setPlaying(sel)
             else setNote("Failed to load: " .. sel) end
         end});
-        S:Button({Name = "Pause", Callback = function()
+        local pausedAt = nil
+        local function togglePause()
             pcall(function()
-                if sound.Playing then sound:Pause() setNote("Paused")
-                else sound:Resume() if currentTrack then setPlaying(currentTrack) else setNote("Resumed") end end
+                if sound.Playing then
+                    pausedAt = sound.TimePosition
+                    sound:Pause()
+                    setNote("Paused")
+                else
+                    if pausedAt then sound.TimePosition = pausedAt pausedAt = nil end
+                    sound:Play()
+                    if currentTrack then setPlaying(currentTrack) else setNote("Resumed") end
+                end
             end)
-        end});
-        S:Button({Name = "Shuffle", Callback = function()
-            local files = scan()
+        end
+        S:Button({Name = "Pause", Callback = function() togglePause() end});
+        local autoplay = false
+        local function playFile(sel)
+            local files = plist()
             if #files == 0 then setNote("No mp3s in bfui/Music/") return end
-            local sel = files[math.random(1, #files)]
+            sel = sel or files[math.random(1, #files)]
             pcall(function() list:Set(sel) end)
+            pausedAt = nil
             local ok = pcall(function()
                 sound.SoundId = getcustomasset(gamepath .. "Music/" .. sel)
                 sound:Play()
             end)
             if ok then setPlaying(sel)
             else setNote("Failed to load: " .. sel) end
+        end
+        local function nextTrack()
+            local files = plist()
+            if #files == 0 then setNote("No mp3s in bfui/Music/") return end
+            local idx = 1
+            for i, f in ipairs(files) do
+                if f == currentTrack then idx = (i % #files) + 1 break end
+            end
+            playFile(files[idx])
+        end
+        local lastPrevAt = 0
+        local function prevTrack()
+            local files = plist()
+            if #files == 0 then setNote("No mp3s in bfui/Music/") return end
+            local nowT = os.clock()
+            if nowT - lastPrevAt < 0.6 then
+                lastPrevAt = 0
+                local idx = #files
+                for i, f in ipairs(files) do
+                    if f == currentTrack then idx = ((i - 2) % #files) + 1 break end
+                end
+                playFile(files[idx])
+            else
+                lastPrevAt = nowT
+                if currentTrack then
+                    pcall(function()
+                        sound.TimePosition = 0
+                        if not sound.Playing then sound:Play() end
+                    end)
+                else
+                    playFile(files[#files])
+                end
+            end
+        end
+        Interface.MusicNext = nextTrack
+        Interface.MusicPrev = prevTrack
+        Interface.MusicPause = togglePause
+        sound.Ended:Connect(function()
+            if not autoplay then return end
+            task.wait(0.5)
+            if not autoplay then return end
+            local files = plist()
+            if #files == 0 then return end
+            local pool = {}
+            for _, f in ipairs(files) do if f ~= currentTrack then table.insert(pool, f) end end
+            if #pool == 0 then pool = files end
+            playFile(pool[math.random(1, #pool)])
+        end)
+        S:Button({Name = "Shuffle", Callback = function() playFile() end});
+        S:Toggle({Name = "Autoplay", Default = false, Callback = function(v)
+            autoplay = v
+            setNote(v and "Autoplay on" or "Autoplay off")
         end});
         S:Button({Name = "Stop", Callback = function()
             pcall(function() sound:Stop() end)
             setStopped()
         end});
+        S:Button({Name = "Next", Callback = function() nextTrack() end}):Button({Name = "Previous", Callback = function() prevTrack() end});
         local C = T:Section({Name = "Controls", Side = "right"})
         C:Slider({Name = "Volume", Min = 0, Max = 100, Default = 50, Callback = function(v)
             pcall(function() sound.Volume = v / 100 end)
@@ -6794,7 +7389,11 @@ do -- Music player tab (plays mp3s from bfui/Music/)
             pcall(function() mini.Visible = v end)
         end});
         C:Slider({Name = "Bar Width", Min = 160, Max = 400, Default = 220, Callback = function(v)
-            pcall(function() mini.Size = UDim2.new(0, v, 0, 52) end)
+            miniW = v
+            syncMiniSize()
+        end});
+        C:Toggle({Name = "Accent Snow", Default = false, Callback = function(v)
+            Interface.SnowAccent = v
         end});
         local CZ = T:Section({Name = "Customizer", Side = "right"})
         local rev = Instance.new("ReverbSoundEffect")
@@ -6830,6 +7429,79 @@ do -- Music player tab (plays mp3s from bfui/Music/)
         CZ:Slider({Name = "Bass", Min = 0, Max = 24, Default = 12, Callback = function(v)
             pcall(function() eq.LowGain = v end)
         end});
+        local VZ = T:Section({Name = "Visualizer", Side = "left"})
+        local barHolder = Framework:New("Frame", {
+            Parent = VZ.Elements.SectionContent,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 60),
+        })
+        Framework:New("UIListLayout", {
+            Parent = barHolder,
+            FillDirection = Enum.FillDirection.Horizontal,
+            VerticalAlignment = Enum.VerticalAlignment.Bottom,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+            Padding = UDim.new(0, 2),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        })
+        local bars, levels = {}, {}
+        for i = 1, 24 do
+            levels[i] = 4
+            bars[i] = Framework:New("Frame", {
+                Parent = barHolder,
+                BorderSizePixel = 0,
+                Size = UDim2.new(0, 7, 0, 4),
+                BackgroundColor3 = Framework.Theme.Colors.Accent,
+            })
+            Framework:New("UICorner", { Parent = bars[i], CornerRadius = UDim.new(1, 0) })
+        end
+        VZ:Toggle({Name = "Visualizer", Default = true, Callback = function(v)
+            Interface.VizOn = v
+            pcall(function() barHolder.Visible = v end)
+            syncMiniSize()
+        end});
+        Framework:Connect(Services.RunService.RenderStepped, function()
+            if Interface.VizOn == false then
+                pcall(function() barHolder.Visible = false end)
+                return
+            end
+            pcall(function() barHolder.Visible = true end)
+            local loud = 0
+            local playing = false
+            pcall(function()
+                loud = sound.PlaybackLoudness
+                playing = sound.Playing
+            end)
+            local t = os.clock()
+            local amp = math.clamp(loud / 1000, 0, 1)
+            amp = math.clamp(amp * 1.4, 0, 1) ^ 0.7
+            local secW, miniWpx = 7, 8
+            pcall(function()
+                secW = math.max(3, (barHolder.AbsoluteSize.X - 46) / 24)
+            end)
+            pcall(function()
+                local mbh = Interface.MiniBars and Interface.MiniBars.holder
+                if mbh then miniWpx = math.max(3, (mbh.AbsoluteSize.X - 22) / 12) end
+            end)
+            for i, b in ipairs(bars) do
+                local target = 4
+                if playing then
+                    local wobble = 0.8 + 0.2 * math.sin(t * 9 + i * 0.9)
+                    target = 4 + amp * 52 * wobble
+                end
+                local rate = (target > levels[i]) and 0.65 or 0.18
+                levels[i] = levels[i] + (target - levels[i]) * rate
+                pcall(function() b.Size = UDim2.new(0, secW, 0, levels[i]) end)
+            end
+            local mmb = Interface.MiniBars
+            if mmb and mmb.bars then
+                for i, b in ipairs(mmb.bars) do
+                    local goal = math.max(3, (levels[i] or 4) * 0.5)
+                    local mrate = (goal > mmb.levels[i]) and 0.65 or 0.2
+                    mmb.levels[i] = mmb.levels[i] + (goal - mmb.levels[i]) * mrate
+                    pcall(function() b.Size = UDim2.new(0, miniWpx, 0, mmb.levels[i]) end)
+                end
+            end
+        end)
         return T
     end;
 end;
@@ -6839,6 +7511,9 @@ do -- QuickStart: first window with Rejoin + Themes tab
         Interface:LoadingScreen(nil, nil, function()
         local W = Interface:Window({Name = "Britts Free UI", Size = UDim2.fromOffset(550, 600)})
         Interface.MainWindow = W
+        pcall(function()
+            game:GetService("Players").LocalPlayer:SetAttribute("BFUI", "1.0.0")
+        end)
         local Home = W:Tab({Name = "Home"})
         local HL = Home:Section({Name = "Main", Side = "left"})
         HL:Button({Name = "Rejoin", Callback = function()
@@ -6849,9 +7524,309 @@ do -- QuickStart: first window with Rejoin + Themes tab
         HL:Button({Name = "Copy JobId", Callback = function()
             if setclipboard then setclipboard(game.JobId) end
         end});
+        HL:Button({Name = "FPS Boost", Callback = function()
+            pcall(function()
+                local L = game:GetService("Lighting")
+                L.GlobalShadows = false
+                for _, v in ipairs(L:GetChildren()) do
+                    if v ~= Framework.BlurObject and (v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect")) then
+                        v.Enabled = false
+                    end
+                end
+                for _, d in ipairs(workspace:GetDescendants()) do
+                    if d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Smoke") or d:IsA("Fire") or d:IsA("Sparkles") then
+                        d.Enabled = false
+                    elseif d:IsA("Decal") or d:IsA("Texture") then
+                        d.Transparency = 1
+                    end
+                end
+                pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
+                Interface:Notification("FPS Boost applied.", 3)
+            end)
+        end});
+        HL:Button({Name = "Server Hop", Callback = function()
+            task.spawn(function()
+                local ok, res = pcall(function()
+                    return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?limit=100")
+                end)
+                if ok then
+                    local ok2, data = pcall(function()
+                        return game:GetService("HttpService"):JSONDecode(res)
+                    end)
+                    if ok2 and data and data.data then
+                        for _, s in ipairs(data.data) do
+                            if s.id ~= game.JobId and (s.playing or 0) < (s.maxPlayers or 1) then
+                                game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, s.id)
+                                return
+                            end
+                        end
+                    end
+                end
+                game:GetService("TeleportService"):Teleport(game.PlaceId)
+            end)
+        end});
+        local AL = Home:Section({Name = "Alarm", Side = "left"})
+        AL:Textbox({Name = "Minutes", Flag = "alarm_min", Placeholder = "5"});
+        local alarmLab = AL:Label({Name = "No alarm"});
+        AL:Button({Name = "Start", Callback = function()
+            local m = tonumber(Interface.Flags["alarm_min"]) or 5
+            local remain = math.floor(m * 60)
+            Interface.AlarmToken = (Interface.AlarmToken or 0) + 1
+            local my = Interface.AlarmToken
+            task.spawn(function()
+                while remain > 0 and Interface.AlarmToken == my do
+                    pcall(function()
+                        alarmLab:SetText("Rings in " .. math.floor(remain / 60) .. ":" .. string.format("%02d", remain % 60))
+                    end)
+                    task.wait(1)
+                    remain = remain - 1
+                end
+                if Interface.AlarmToken == my then
+                    alarmLab:SetText("Time!")
+                    Interface:Notification("Alarm done.", 5)
+                end
+            end)
+        end}):Button({Name = "Stop", Callback = function()
+            Interface.AlarmToken = (Interface.AlarmToken or 0) + 1
+            alarmLab:SetText("No alarm")
+        end});
         local HR = Home:Section({Name = "Info", Side = "right"})
         HR:Label({Name = "Welcome"})
+        HR:InfoLabel({Name1 = "Place: ", Name2 = tostring(game.PlaceId)});
+        local pLab = HR:Label({Name = "Players: ..."})
+        local uLab = HR:Label({Name = "Uptime: ..."})
+        HR:Button({Name = "Copy PlaceId", Callback = function()
+            if setclipboard then setclipboard(tostring(game.PlaceId)) end
+        end});
+        do
+            local _s0 = os.clock()
+            Interface._lastPing = Interface._lastPing or "..."
+            task.spawn(function()
+                while true do
+                    task.wait(5)
+                    pcall(function()
+                        local n = #game:GetService("Players"):GetPlayers()
+                        pLab:SetText("Players: " .. n .. " | Ping: " .. Interface._lastPing)
+                    end)
+                    pcall(function()
+                        local stats = game:GetService("Stats").Network.ServerStatsItem
+                        if stats and stats:FindFirstChild("Data Ping") then
+                            Interface._lastPing = tostring(math.floor(stats["Data Ping"]:GetValue())) .. "ms"
+                        end
+                    end)
+                    pcall(function()
+                        local s = math.floor(os.clock() - _s0)
+                        uLab:SetText("Uptime: " .. math.floor(s / 60) .. "m " .. (s % 60) .. "s")
+                    end)
+                end
+            end)
+        end;
+        local SK = Home:Section({Name = "Sky", Side = "right"})
+        local savedSky = nil
+        Interface.SkyToken = Interface.SkyToken or 0
+        local SkyPresets = {
+            Dark = {ClockTime = 0, Brightness = 0, Ambient = Color3.new(0, 0, 0), OutdoorAmbient = Color3.new(0, 0, 0), FogColor = Color3.new(0, 0, 0), FogEnd = 150, Stars = true, Atmo = {Density = 0.6, Color = Color3.new(0, 0, 0), Decay = Color3.new(0, 0, 0), Glare = 0, Haze = 0}},
+            Night = {ClockTime = 2, Brightness = 1, Ambient = Color3.fromRGB(20, 25, 45), OutdoorAmbient = Color3.fromRGB(25, 30, 55), FogColor = Color3.fromRGB(10, 12, 25), FogEnd = 500, Stars = true, Atmo = {Density = 0.4, Color = Color3.fromRGB(10, 12, 30), Decay = Color3.fromRGB(5, 8, 20), Glare = 0, Haze = 2}},
+            Sunset = {ClockTime = 17.6, Brightness = 2, Ambient = Color3.fromRGB(90, 60, 60), OutdoorAmbient = Color3.fromRGB(200, 120, 70), FogColor = Color3.fromRGB(230, 130, 80), FogEnd = 1000, Stars = false, Atmo = {Density = 0.45, Color = Color3.fromRGB(200, 130, 90), Decay = Color3.fromRGB(180, 110, 70), Glare = 0, Haze = 3}},
+        }
+        local function saveSky()
+            if savedSky then return end
+            local L = game:GetService("Lighting")
+            savedSky = {ClockTime = L.ClockTime, Brightness = L.Brightness, Ambient = L.Ambient, OutdoorAmbient = L.OutdoorAmbient, FogColor = L.FogColor, FogEnd = L.FogEnd, Stars = L.StarsEnabled}
+            local a = L:FindFirstChildOfClass("Atmosphere")
+            if a then
+                savedSky.Atmo = {Density = a.Density, Offset = a.Offset, Color = a.Color, Decay = a.Decay, Glare = a.Glare, Haze = a.Haze}
+            end
+        end
+        local function applySky(s)
+            local L = game:GetService("Lighting")
+            pcall(function()
+                if s.ClockTime then L.ClockTime = s.ClockTime end
+                if s.Brightness ~= nil then L.Brightness = s.Brightness end
+                if s.Ambient then L.Ambient = s.Ambient end
+                if s.OutdoorAmbient then L.OutdoorAmbient = s.OutdoorAmbient end
+                if s.FogColor then L.FogColor = s.FogColor end
+                if s.FogEnd then L.FogEnd = s.FogEnd end
+                if s.Stars ~= nil then L.StarsEnabled = s.Stars end
+                local a = L:FindFirstChildOfClass("Atmosphere")
+                if a and s.Atmo then
+                    for k, v in pairs(s.Atmo) do
+                        pcall(function() a[k] = v end)
+                    end
+                end
+            end)
+        end
+        local function setSky(s)
+            saveSky()
+            Interface.SkyToken = Interface.SkyToken + 1
+            local my = Interface.SkyToken
+            Interface.ActiveSky = s
+            applySky(s)
+            task.spawn(function()
+                while Interface.ActiveSky == s and my == Interface.SkyToken do
+                    task.wait(1)
+                    if Interface.ActiveSky == s then applySky(s) end
+                end
+            end)
+        end
+        SK:Dropdown({Name = "Sky", Flag = "sky_pick", Options = {"Default", "Dark", "Night", "Sunset"}, Default = "Default", Callback = function(v)
+            if v == "Default" then
+                if savedSky then
+                    Interface.SkyToken = Interface.SkyToken + 1
+                    Interface.ActiveSky = nil
+                    applySky(savedSky)
+                end
+            else
+                local p = SkyPresets[v]
+                if p then setSky(p) end
+            end
+        end});
         Interface:MusicTab(W)
+        local PZT = W:Tab({Name = "Playlists"})
+        local PZ = PZT:Section({Name = "Playlists", Side = "left"})
+        local function plPath(n) return gamepath .. "Playlists/" .. n .. ".pl" end
+        local function plScan()
+            local out = {}
+            pcall(function()
+                if not isfolder(gamepath .. "Playlists") then makefolder(gamepath .. "Playlists") end
+                for _, f in ipairs(listfiles(gamepath .. "Playlists/")) do
+                    local n = (f:gsub("\\","/")):match("([^/]+)%.pl$")
+                    if n then table.insert(out, n) end
+                end
+            end)
+            table.sort(out)
+            return out
+        end
+        local function songScan()
+            local out = {}
+            pcall(function()
+                for _, f in ipairs(listfiles(gamepath .. "Music/")) do
+                    local n = (f:gsub("\\","/")):match("([^/]+)$")
+                    if n and n:lower():sub(-4) == ".mp3" then
+                        table.insert(out, n)
+                    end
+                end
+            end)
+            table.sort(out)
+            return out
+        end
+        local function plNote(msg)
+            Interface:Notification(msg, 3)
+        end
+        PZ:Label({Name = "Songs"});
+        local songList = PZ:ListBox({Flag = "pl_songs", Options = songScan(), Multi = true});
+        PZ:Label({Name = "Playlists"});
+        local pickList = PZ:ListBox({Flag = "pl_pick", Options = plScan()});
+        PZ:Textbox({Name = "Name", Flag = "pl_name", Placeholder = "playlist name..."});
+        PZ:Button({Name = "Create", Callback = function()
+            local name = Interface.Flags["pl_name"]
+            local songs = Interface.Flags["pl_songs"]
+            if name and name ~= "" and type(songs) == "table" and #songs > 0 then
+                pcall(function()
+                    if not isfolder(gamepath .. "Playlists") then makefolder(gamepath .. "Playlists") end
+                    writefile(plPath(name), table.concat(songs, "\n"))
+                end)
+                pickList:Refresh(plScan())
+                Interface:Notification("Saved playlist [" .. name .. "].", 3)
+            end
+        end}):Button({Name = "Open", Callback = function()
+            local sel = Interface.Flags["pl_pick"]
+            if type(sel) == "table" then sel = sel[1] end
+            if sel and sel ~= "" then
+                local q = {}
+                pcall(function()
+                    local raw = readfile(plPath(sel))
+                    for _, line in ipairs(string.split(raw, "\n")) do
+                        line = line:gsub("^%s+", ""):gsub("%s+$", "")
+                        if line ~= "" then table.insert(q, line) end
+                    end
+                end)
+                if #q > 0 then
+                    Interface.MusicQueue = q
+                    Interface:Notification("Queue: " .. sel .. " (" .. #q .. ")", 3)
+                else
+                    Interface:Notification("Playlist empty.", 3)
+                end
+            end
+        end});
+        PZ:Button({Name = "Add Songs", Callback = function()
+            local sel = Interface.Flags["pl_pick"]
+            if type(sel) == "table" then sel = sel[1] end
+            local songs = Interface.Flags["pl_songs"]
+            if sel and sel ~= "" and type(songs) == "table" and #songs > 0 then
+                local have = {}
+                pcall(function()
+                    local raw = readfile(plPath(sel))
+                    for _, line in ipairs(string.split(raw, "\n")) do
+                        line = line:gsub("^%s+", ""):gsub("%s+$", "")
+                        if line ~= "" then have[line] = true end
+                    end
+                end)
+                for _, s in ipairs(songs) do have[s] = true end
+                local out = {}
+                for _, f in ipairs(songScan()) do if have[f] then table.insert(out, f) end end
+                for k in pairs(have) do
+                    local found = false
+                    for _, f in ipairs(out) do if f == k then found = true break end end
+                    if not found then table.insert(out, k) end
+                end
+                pcall(function() writefile(plPath(sel), table.concat(out, "\n")) end)
+                Interface:Notification("Added to [" .. sel .. "].", 3)
+            end
+        end});
+        PZ:Button({Name = "Unload", Callback = function()
+            Interface.MusicQueue = nil
+            Interface:Notification("Queue cleared.", 3)
+        end}):Button({Name = "Refresh", Callback = function()
+            pickList:Refresh(plScan())
+            songList:Refresh(songScan())
+        end});
+        PZ:Textbox({Name = "Share", Flag = "pl_share", Placeholder = "paste playlist..."});
+        PZ:Button({Name = "Copy", Callback = function()
+            local songs = Interface.Flags["pl_songs"]
+            if setclipboard and type(songs) == "table" and #songs > 0 then
+                setclipboard(table.concat(songs, "\n"))
+                Interface:Notification("Copied playlist.", 3)
+            end
+        end}):Button({Name = "Import", Callback = function()
+            local name = Interface.Flags["pl_name"]
+            local s = Interface.Flags["pl_share"]
+            if name and name ~= "" and s and s ~= "" then
+                local q = {}
+                for _, line in ipairs(string.split(s, "\n")) do
+                    line = line:gsub("^%s+", ""):gsub("%s+$", "")
+                    if line ~= "" then table.insert(q, line) end
+                end
+                if #q > 0 then
+                    pcall(function()
+                        if not isfolder(gamepath .. "Playlists") then makefolder(gamepath .. "Playlists") end
+                        writefile(plPath(name), table.concat(q, "\n"))
+                    end)
+                    pickList:Refresh(plScan())
+                    Interface:Notification("Imported [" .. name .. "].", 3)
+                end
+            end
+        end});
+        local US = W:Tab({Name = "Users"})
+        local UB = US:Section({Name = "Library Users", Side = "left"})
+        local uCount = UB:Label({Name = "0 online"})
+        local uList = UB:ListBox({Flag = "bfui_users", Options = {"none"}})
+        local function scanUsers()
+            local names = {}
+            for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
+                local ok, v = pcall(function() return p:GetAttribute("BFUI") end)
+                if ok and v then
+                    table.insert(names, p.DisplayName .. " (@" .. p.Name .. ")")
+                end
+            end
+            table.sort(names)
+            return names
+        end
+        UB:Button({Name = "Refresh", Callback = function()
+            local names = scanUsers()
+            uCount:SetText(#names .. " online")
+            uList:Refresh(#names > 0 and names or {"none"})
+        end});
         local Set = W:Tab({Name = "Settings"})
         Interface:Configs(Set)
         Interface:General(Set)
@@ -6862,6 +7837,14 @@ end;
 
 -- expose (before return so Execute runs it)
 if getgenv then getgenv().s_win_Interface = Interface getgenv().s_win_Framework = Framework getgenv().s_win_Assets = Assets end
-print("execute getgenv().s_win_Interface:QuickStart() to start using it enjoy!")
+print("Britts Free UI loaded enjoy!")
+
+-- one-click execute: auto-open key gate on load (key = Free)
+task.spawn(function()
+    task.wait(0.5)
+    pcall(function()
+        Interface:KeyGate(function() Interface:QuickStart() end)
+    end)
+end)
 
 return Interface;
